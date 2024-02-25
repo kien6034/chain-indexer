@@ -75,17 +75,11 @@ func (c *BitcoinClient) ParseTx(txItem TxItem, address string) (*Transaction, er
 		} else {
 			receivers[vout.ScriptPubKeyAddress] = vout.Value
 		}
-	}
 
-	var txType TxType
-	// perf: improve this logic
-	if totalSpend > 0 {
-		txType = OutGoing // address send tx
-	} else if totalReceive > 0 && totalSpend == 0 {
-		txType = Incoming // address receive tx
-	} else {
-		// unknown
-		return nil, fmt.Errorf("unknown tx type")
+		// subtract the sender's total sent amount
+		if _, exists := senders[vout.ScriptPubKeyAddress]; exists {
+			senders[vout.ScriptPubKeyAddress] -= vout.Value
+		}
 	}
 
 	var senderList []Sender
@@ -98,7 +92,25 @@ func (c *BitcoinClient) ParseTx(txItem TxItem, address string) (*Transaction, er
 		receiverList = append(receiverList, Receiver{Address: address, Value: value})
 	}
 
+	var txType TxType
+	// perf: improve this logic
+	if totalSpend > 0 {
+		txType = OutGoing // address send tx
+
+		// discard other senders
+		senderList = []Sender{{Address: address, Value: totalSpend}}
+	} else if totalReceive > 0 && totalSpend == 0 {
+		txType = Incoming // address receive tx
+
+		// discard other receivers
+		receiverList = []Receiver{{Address: address, Value: totalReceive}}
+	} else {
+		// unknown
+		return nil, fmt.Errorf("unknown tx type")
+	}
+
 	return &Transaction{
+		TxId:         txItem.TxID,
 		Sender:       senderList,
 		Receivers:    receiverList,
 		TotalSpend:   totalSpend,

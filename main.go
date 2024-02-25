@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/kien6034/chain-indexer/bitcoin"
 )
 
@@ -17,6 +15,6 @@ func main() {
 
 	for _, tx := range txs {
 		// Print the transaction
-		fmt.Printf("Transaction: %+v\n", tx)
+		tx.VerbalInfo()
 	}
 }

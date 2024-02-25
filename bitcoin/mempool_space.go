@@ -28,7 +28,6 @@ func NewMempoolSpaceClient(isMainnet bool) *MempoolSpaceClient {
 func (c *MempoolSpaceClient) GetAddressTransactions(address string) ([]TxItem, error) {
 	url := fmt.Sprintf("%s/address/%s/txs", c.baseAPI, address)
 
-	fmt.Println("url", url)
 	// Make the HTTP GET request
 	resp, err := http.Get(url)
 	if err != nil {
