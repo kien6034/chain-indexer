@@ -8,6 +8,7 @@ Indexer for btc
 
 ```go
 type Transaction struct {
+  BaseAddress  string     `json:"base_address"`
 	TxId         string     `json:"txid"`
 	Sender       []Sender   `json:"sender"` // TODO: sender could be multiple addresses
 	Receivers    []Receiver `json:"receivers"`
