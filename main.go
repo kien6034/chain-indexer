@@ -10,9 +10,13 @@ func main() {
 	client := bitcoin.NewBitcoinClient(false) // testnet
 
 	// Get the transactions for an address
-	transactions, err := client.GetAddressTransactions("tb1qjfaa5vvxt9m4sp9kqkcpzypkzydz2vcywqx9tm")
+	txs, err := client.GetAddressTransactions("tb1qjfaa5vvxt9m4sp9kqkcpzypkzydz2vcywqx9tm")
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(transactions)
+
+	for _, tx := range txs {
+		// Print the transaction
+		fmt.Printf("Transaction: %+v\n", tx)
+	}
 }

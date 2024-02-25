@@ -25,26 +25,26 @@ func NewMempoolSpaceClient(isMainnet bool) *MempoolSpaceClient {
 	}
 }
 
-func (c *MempoolSpaceClient) GetAddressTransactions(address string) (string, error) {
+func (c *MempoolSpaceClient) GetAddressTransactions(address string) ([]TxItem, error) {
 	url := fmt.Sprintf("%s/address/%s/txs", c.baseAPI, address)
 
 	fmt.Println("url", url)
 	// Make the HTTP GET request
 	resp, err := http.Get(url)
 	if err != nil {
-		return "", err // Return the error if the request failed
+		return nil, err // Return the error if the request failed
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err // Return the error if reading the response body failed
+		return nil, err // Return the error if reading the response body failed
 	}
 
-	var txItems []TxItems
+	var txItems []TxItem
 	if err := json.Unmarshal(body, &txItems); err != nil {
-		return "", err
+		return nil, err
 	}
-	return fmt.Sprintf("%+v", txItems), nil
+	return txItems, nil
 }
