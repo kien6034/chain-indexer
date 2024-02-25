@@ -2,7 +2,7 @@ package bitcoin
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -11,11 +11,11 @@ type MempoolSpaceClient struct {
 	baseAPI   string
 }
 
-func NewMempoolSpaceClient(API string, isMainnet bool) *MempoolSpaceClient {
+func NewMempoolSpaceClient(isMainnet bool) *MempoolSpaceClient {
 
-	baseAPI := MempoolSpaceAPI + "testnet"
+	baseAPI := MempoolSpaceAPI + "testnet" + "/api"
 	if isMainnet {
-		baseAPI = MempoolSpaceAPI + "mainet"
+		baseAPI = MempoolSpaceAPI + "mainnet" + "/api"
 	}
 
 	return &MempoolSpaceClient{
@@ -25,8 +25,9 @@ func NewMempoolSpaceClient(API string, isMainnet bool) *MempoolSpaceClient {
 }
 
 func (c *MempoolSpaceClient) GetAddressTransactions(address string) (string, error) {
-	url := fmt.Sprintf("%s/address/%s", c.baseAPI, address)
+	url := fmt.Sprintf("%s/address/%s/txs", c.baseAPI, address)
 
+	fmt.Println("url", url)
 	// Make the HTTP GET request
 	resp, err := http.Get(url)
 	if err != nil {
@@ -35,7 +36,7 @@ func (c *MempoolSpaceClient) GetAddressTransactions(address string) (string, err
 	defer resp.Body.Close()
 
 	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err // Return the error if reading the response body failed
 	}
