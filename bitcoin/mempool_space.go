@@ -1,6 +1,7 @@
 package bitcoin
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,5 +42,9 @@ func (c *MempoolSpaceClient) GetAddressTransactions(address string) (string, err
 		return "", err // Return the error if reading the response body failed
 	}
 
-	return string(body), nil
+	var txItems []TxItems
+	if err := json.Unmarshal(body, &txItems); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%+v", txItems), nil
 }
