@@ -16,8 +16,9 @@ type Sender struct {
 }
 
 type Transaction struct {
+	BaseAddress  string     `json:"base_address"` // The address that we want to track, corresponding with TxType
 	TxId         string     `json:"txid"`
-	Sender       []Sender   `json:"sender"` // TODO: sender could be multiple addresses
+	Sender       []Sender   `json:"sender"`
 	Receivers    []Receiver `json:"receivers"`
 	TotalSpend   int64      `json:"total_spend"`
 	TotalReceive int64      `json:"total_receive"`
@@ -54,7 +55,8 @@ func (t *Transaction) Print() {
 }
 
 func (t *Transaction) VerbalInfo() {
-	fmt.Printf("\n \n --- Tx: %s\n", t.TxId)
+	fmt.Printf("\n \n === Tx: %s ===", t.TxId)
+	fmt.Printf("\nBase address: %s", t.BaseAddress)
 
 	if t.TxType == OutGoing {
 		if len(t.Sender) == 0 {
@@ -64,9 +66,8 @@ func (t *Transaction) VerbalInfo() {
 
 		fmt.Printf("->> Outgoing: Sent %d sats from %s\n", sender.Value, sender.Address)
 		for _, receiver := range t.Receivers {
-			fmt.Printf("Receiver: %s || Amount %d", receiver.Address, receiver.Value)
+			fmt.Printf("\nReceiver: %s || Amount %d", receiver.Address, receiver.Value)
 		}
-
 	}
 
 	if t.TxType == Incoming {
@@ -77,7 +78,7 @@ func (t *Transaction) VerbalInfo() {
 
 		fmt.Printf("<<- Incoming: Received %d sats to %s\n", receiver.Value, receiver.Address)
 		for _, sender := range t.Sender {
-			fmt.Printf("Sender: %s || Amount %d", sender.Address, sender.Value)
+			fmt.Printf("\n Sender: %s || Amount %d", sender.Address, sender.Value)
 		}
 	}
 }

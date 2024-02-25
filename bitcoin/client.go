@@ -111,6 +111,7 @@ func (c *BitcoinClient) ParseTx(txItem TxItem, address string) (*Transaction, er
 
 	return &Transaction{
 		TxId:         txItem.TxID,
+		BaseAddress:  address,
 		Sender:       senderList,
 		Receivers:    receiverList,
 		TotalSpend:   totalSpend,
