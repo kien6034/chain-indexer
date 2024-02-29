@@ -27,6 +27,7 @@ func (c *BitcoinClient) GetAddressTransactions(address string) ([]Transaction, e
 		tx, err := c.ParseTx(txItem, address)
 		if err != nil {
 			fmt.Println("Error parsing tx:", err) // handling error
+			continue
 		}
 
 		transactions = append(transactions, *tx)

@@ -16,7 +16,7 @@ func NewMempoolSpaceClient(isMainnet bool) *MempoolSpaceClient {
 
 	baseAPI := MempoolSpaceAPI + "testnet" + "/api"
 	if isMainnet {
-		baseAPI = MempoolSpaceAPI + "mainnet" + "/api"
+		baseAPI = MempoolSpaceAPI + "/api"
 	}
 
 	return &MempoolSpaceClient{

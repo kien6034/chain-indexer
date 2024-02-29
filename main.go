@@ -5,10 +5,10 @@ import (
 )
 
 func main() {
-	client := bitcoin.NewBitcoinClient(false) // testnet
+	client := bitcoin.NewBitcoinClient(true) // testnet
 
 	// Get the transactions for an address
-	txs, err := client.GetAddressTransactions("tb1qjfaa5vvxt9m4sp9kqkcpzypkzydz2vcywqx9tm")
+	txs, err := client.GetAddressTransactions("bc1qw68npyr7xjr7k7622vnvkus0awjusz4rvvl33l")
 	if err != nil {
 		panic(err)
 	}
