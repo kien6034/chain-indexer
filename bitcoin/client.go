@@ -1,7 +1,9 @@
 package bitcoin
 
 import (
+	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
 type BitcoinClient struct {
@@ -42,9 +44,9 @@ func (c *BitcoinClient) GetAddressTransactions(address string) ([]Transaction, e
 func (c *BitcoinClient) ParseTx(txItem TxItem, address string) (*Transaction, error) {
 	// TODO: check cache / db. If txItem is already handled, return
 
-	if !txItem.IsConfirmed() {
-		return nil, fmt.Errorf("tx is not confirmed")
-	}
+	// if !txItem.IsConfirmed() {
+	// 	return nil, fmt.Errorf("tx is not confirmed")
+	// }
 
 	// decode vin
 	totalSpend := int64(0) // amount that the address spend
@@ -80,6 +82,16 @@ func (c *BitcoinClient) ParseTx(txItem TxItem, address string) (*Transaction, er
 		// subtract the sender's total sent amount
 		if _, exists := senders[vout.ScriptPubKeyAddress]; exists {
 			senders[vout.ScriptPubKeyAddress] -= vout.Value
+		}
+
+		if vout.ScriptPubKeyType == "op_return" {
+			hexData := strings.Split(vout.ScriptPubKeyAsm, " ")[2]
+			decodedBytes, err := hex.DecodeString(hexData)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode op_return data: %v", err)
+			}
+			data := string(decodedBytes)
+			fmt.Println("op_return data:", data)
 		}
 	}
 
