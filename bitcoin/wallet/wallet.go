@@ -1,8 +1,17 @@
 package wallet
 
 import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
+	"log"
+
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/btcutil/bech32"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
 )
 
 type BtcWallet struct {
@@ -27,7 +36,7 @@ func (w *BtcWallet) CreateTx(destination string, amount int64) (string, error) {
 	return rawTx, nil
 }
 
-func (w *BtcWallet) GetWifAddress() (string, error) {
+func (w *BtcWallet) GetWifPubkeyAddress() (string, error) {
 	wif, err := btcutil.DecodeWIF(w.pk)
 
 	if err != nil {
@@ -40,4 +49,109 @@ func (w *BtcWallet) GetWifAddress() (string, error) {
 	}
 
 	return addrWitnessPubKeyHash.EncodeAddress(), nil
+}
+
+func (w *BtcWallet) Bench32ToPubkeyScript(bech32Addr string) (string, error) {
+	// Decode the Bech32 address
+	hrp, decoded, err := bech32.Decode(bech32Addr)
+	if err != nil {
+		log.Fatalf("Error decoding Bech32 address: %v", err)
+	}
+
+	// Convert from Bech32 encoding to a witness program
+	converted, err := bech32.ConvertBits(decoded, 5, 8, false)
+	if err != nil {
+		log.Fatalf("Error converting Bech32 decoded data: %v", err)
+	}
+
+	// Ensure the decoded address is for the correct network (testnet in this case)
+	if hrp != "tb" {
+		log.Fatalf("Address is not a testnet address")
+	}
+
+	// Create a P2PKH script
+	pkScript, err := txscript.NewScriptBuilder().AddOp(txscript.OP_DUP).AddOp(txscript.OP_HASH160).AddData(converted).AddOp(txscript.OP_EQUALVERIFY).AddOp(txscript.OP_CHECKSIG).Script()
+	if err != nil {
+		log.Fatalf("Error creating P2PKH script: %v", err)
+	}
+
+	// convert back to hexadecimal format
+	hexScript := hex.EncodeToString(pkScript)
+	fmt.Println("P2PKH Script:", hexScript)
+
+	return hexScript, nil
+}
+
+func (w *BtcWallet) SendTo(destination string, txId string, amount int64) (string, error) {
+	desinationAddr, err := btcutil.DecodeAddress(destination, &w.chainCfg)
+	if err != nil {
+		return "", err
+	}
+
+	destinationAddrByte, err := txscript.PayToAddrScript(desinationAddr)
+	if err != nil {
+		return "", err
+	}
+
+	redeemTx, err := NewTx()
+	if err != nil {
+		return "", err
+	}
+
+	utxoHash, err := chainhash.NewHashFromStr(txId)
+	if err != nil {
+		return "", err
+	}
+
+	// the second argument is vout or Tx-index, which is the index
+	// of spending UTXO in the transaction that Txid referred to
+	// in this case is 1, but can vary different numbers
+	outPoint := wire.NewOutPoint(utxoHash, 1)
+
+	// making the input, and adding it to transaction
+	txIn := wire.NewTxIn(outPoint, nil, nil)
+	redeemTx.AddTxIn(txIn)
+
+	// adding the destination address and the amount to
+	// the transaction as output
+	redeemTxOut := wire.NewTxOut(amount, destinationAddrByte)
+	redeemTx.AddTxOut(redeemTxOut)
+
+	// now sign the transaction
+	finalRawTx, err := SignTx(w.pk, "", redeemTx)
+	if err != nil {
+		return "", err
+	}
+	return finalRawTx, nil
+}
+
+func (w *BtcWallet) SignTx(pkScript string, redeemTx *wire.MsgTx) (string, error) {
+	wif, err := btcutil.DecodeWIF(w.pk)
+	if err != nil {
+		return "", err
+	}
+
+	sourcePKScript, err := hex.DecodeString(pkScript)
+	if err != nil {
+		return "", nil
+	}
+
+	// since there is only one input in our transaction
+	// we use 0 as second argument, if the transaction
+	// has more args, should pass related index
+	signature, err := txscript.SignatureScript(redeemTx, 0, sourcePKScript, txscript.SigHashAll, wif.PrivKey, false)
+	if err != nil {
+		return "", nil
+	}
+
+	// since there is only one input, and want to add
+	// signature to it use 0 as index
+	redeemTx.TxIn[0].SignatureScript = signature
+
+	var signedTx bytes.Buffer
+	redeemTx.Serialize(&signedTx)
+
+	hexSignedTx := hex.EncodeToString(signedTx.Bytes())
+
+	return hexSignedTx, nil
 }

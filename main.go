@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -33,7 +34,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	client.GetAddressUTXOs(wifAddr)
+
+	utxo, err := client.GetAddressUTXOs(wifAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(utxo)
 
 	// get wallet
 }

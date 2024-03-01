@@ -81,3 +81,17 @@ func (tx *TxItem) Print() {
 func (tx *TxItem) IsConfirmed() bool {
 	return tx.Status.Confirmed
 }
+
+type UTXO struct {
+	TxID   string     `json:"txid"`
+	Vout   int        `json:"vout"`
+	Status UTXOStatus `json:"status"`
+	Value  int64      `json:"value"`
+}
+
+type UTXOStatus struct {
+	Confirmed   bool   `json:"confirmed"`
+	BlockHeight int    `json:"block_height"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   int64  `json:"block_time"`
+}

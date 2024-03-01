@@ -47,7 +47,7 @@ func (c *MempoolSpaceClient) GetAddressTransactions(address string) ([]TxItem, e
 	return txItems, nil
 }
 
-func (c *MempoolSpaceClient) GetAddressUTXOs(address string) ([]string, error) {
+func (c *MempoolSpaceClient) GetAddressUTXOs(address string) ([]UTXO, error) {
 	url := fmt.Sprintf("%s/address/%s/utxo", c.baseAPI, address)
 	fmt.Println("url: ", url)
 
@@ -64,12 +64,9 @@ func (c *MempoolSpaceClient) GetAddressUTXOs(address string) ([]string, error) {
 		return nil, err // Return the error if reading the response body failed
 	}
 
-	fmt.Println("Response Body as JSON:", string(body))
-
-	// var utxos []UTXO
-	// if err := json.Unmarshal(body, &utxos); err != nil {
-	// 	return nil, err
-	// }
-	// return utxos, nil
-	return nil, nil
+	var utxos []UTXO
+	if err := json.Unmarshal(body, &utxos); err != nil {
+		return nil, err
+	}
+	return utxos, nil
 }
