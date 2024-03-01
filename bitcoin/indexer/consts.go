@@ -1,4 +1,4 @@
-package bitcoin
+package indexer
 
 const (
 	MempoolSpaceAPI = "https://mempool.space/"

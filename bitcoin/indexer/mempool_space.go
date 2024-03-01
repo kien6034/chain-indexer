@@ -1,4 +1,4 @@
-package bitcoin
+package indexer
 
 import (
 	"encoding/json"
@@ -13,7 +13,6 @@ type MempoolSpaceClient struct {
 }
 
 func NewMempoolSpaceClient(isMainnet bool) *MempoolSpaceClient {
-
 	baseAPI := MempoolSpaceAPI + "testnet" + "/api"
 	if isMainnet {
 		baseAPI = MempoolSpaceAPI + "/api"
@@ -46,4 +45,32 @@ func (c *MempoolSpaceClient) GetAddressTransactions(address string) ([]TxItem, e
 		return nil, err
 	}
 	return txItems, nil
+}
+
+func (c *MempoolSpaceClient) GetAddressUTXOs(address string) ([]string, error) {
+
+	url := fmt.Sprintf("%s/address/%s/utxo", c.baseAPI, address)
+	fmt.Println("url: ", url)
+
+	// Make the HTTP GET request
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err // Return the error if the request failed
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err // Return the error if reading the response body failed
+	}
+
+	fmt.Println("Response Body as JSON:", string(body))
+
+	// var utxos []UTXO
+	// if err := json.Unmarshal(body, &utxos); err != nil {
+	// 	return nil, err
+	// }
+	// return utxos, nil
+	return nil, nil
 }
