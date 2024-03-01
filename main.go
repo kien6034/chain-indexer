@@ -1,13 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
 	"github.com/joho/godotenv"
 	"github.com/kien6034/chain-indexer/bitcoin/indexer"
-	"github.com/kien6034/chain-indexer/bitcoin/wallet"
 )
 
 var PRIVATE_KEY string
@@ -25,22 +23,17 @@ func init() {
 }
 
 func main() {
-	isMainnet := false
-	wallet := wallet.NewBtcWallet(PRIVATE_KEY, isMainnet)
-	client := indexer.NewBitcoinClient(isMainnet) // testnet
+	// create indexer
+	indexer := indexer.NewBitcoinClient(false)
 
-	// Get client utxos
-	wifAddr, err := wallet.GetWifAddress()
+	// Get address transactions
+	txItems, err := indexer.GetAddressTransactions("tb1qjfaa5vvxt9m4sp9kqkcpzypkzydz2vcywqx9tm")
+
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
-	utxo, err := client.GetAddressUTXOs(wifAddr)
-	if err != nil {
-		log.Fatal(err)
+	for _, tx := range txItems {
+		tx.VerbalInfo()
 	}
-
-	fmt.Println(utxo)
-
-	// get wallet
 }

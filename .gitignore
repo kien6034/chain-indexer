@@ -1,1 +1,3 @@
 .env
+
+bitcoin/wallet/note.go

@@ -1,3 +1,9 @@
+# BTC - EVM Integration
+
+- [x] BTC indexer by wallet transactions
+- [ ] BTC signing client: https://github.com/btcsuite/btcwallet
+- [ ] EVM indexer / signing client
+
 ## Chain-indexer
 
 Indexer for btc

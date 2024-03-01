@@ -9,7 +9,6 @@ import (
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/bech32"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
@@ -28,13 +27,13 @@ func NewBtcWallet(pk string, isMainnet bool) *BtcWallet {
 	return &BtcWallet{pk: pk, chainCfg: cfg}
 }
 
-func (w *BtcWallet) CreateTx(destination string, amount int64) (string, error) {
-	rawTx, err := CreateTx(w.pk, destination, amount)
-	if err != nil {
-		return "", err
-	}
-	return rawTx, nil
-}
+// func (w *BtcWallet) CreateTx(destination string, amount int64) (string, error) {
+// 	rawTx, err := CreateTx(w.pk, destination, amount)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return rawTx, nil
+// }
 
 func (w *BtcWallet) GetWifPubkeyAddress() (string, error) {
 	wif, err := btcutil.DecodeWIF(w.pk)
@@ -80,49 +79,6 @@ func (w *BtcWallet) Bench32ToPubkeyScript(bech32Addr string) (string, error) {
 	fmt.Println("P2PKH Script:", hexScript)
 
 	return hexScript, nil
-}
-
-func (w *BtcWallet) SendTo(destination string, txId string, amount int64) (string, error) {
-	desinationAddr, err := btcutil.DecodeAddress(destination, &w.chainCfg)
-	if err != nil {
-		return "", err
-	}
-
-	destinationAddrByte, err := txscript.PayToAddrScript(desinationAddr)
-	if err != nil {
-		return "", err
-	}
-
-	redeemTx, err := NewTx()
-	if err != nil {
-		return "", err
-	}
-
-	utxoHash, err := chainhash.NewHashFromStr(txId)
-	if err != nil {
-		return "", err
-	}
-
-	// the second argument is vout or Tx-index, which is the index
-	// of spending UTXO in the transaction that Txid referred to
-	// in this case is 1, but can vary different numbers
-	outPoint := wire.NewOutPoint(utxoHash, 1)
-
-	// making the input, and adding it to transaction
-	txIn := wire.NewTxIn(outPoint, nil, nil)
-	redeemTx.AddTxIn(txIn)
-
-	// adding the destination address and the amount to
-	// the transaction as output
-	redeemTxOut := wire.NewTxOut(amount, destinationAddrByte)
-	redeemTx.AddTxOut(redeemTxOut)
-
-	// now sign the transaction
-	finalRawTx, err := SignTx(w.pk, "", redeemTx)
-	if err != nil {
-		return "", err
-	}
-	return finalRawTx, nil
 }
 
 func (w *BtcWallet) SignTx(pkScript string, redeemTx *wire.MsgTx) (string, error) {
