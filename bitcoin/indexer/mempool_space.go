@@ -48,7 +48,6 @@ func (c *MempoolSpaceClient) GetAddressTransactions(address string) ([]TxItem, e
 }
 
 func (c *MempoolSpaceClient) GetAddressUTXOs(address string) ([]string, error) {
-
 	url := fmt.Sprintf("%s/address/%s/utxo", c.baseAPI, address)
 	fmt.Println("url: ", url)
 

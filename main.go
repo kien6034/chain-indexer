@@ -1,23 +1,39 @@
 package main
 
 import (
-	"github.com/kien6034/chain-indexer/indexer"
+	"log"
+	"os"
+
+	"github.com/joho/godotenv"
+	"github.com/kien6034/chain-indexer/bitcoin/indexer"
+	"github.com/kien6034/chain-indexer/bitcoin/wallet"
 )
 
+var PRIVATE_KEY string
+
+func init() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	PRIVATE_KEY = os.Getenv("PRIVATE_KEY")
+	if PRIVATE_KEY == "" {
+		log.Fatal("PRIVATE_KEY environment variable is not set.")
+	}
+}
+
 func main() {
-	client := indexer.NewBitcoinClient(false) // testnet
-
-	// Get the transactions for an address
-	// txs, err := client.GetAddressTransactions("bc1qw68npyr7xjr7k7622vnvkus0awjusz4rvvl33l")
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// for _, tx := range txs {
-	// 	// Print the transaction
-	// 	tx.VerbalInfo()
-	// }
+	isMainnet := false
+	wallet := wallet.NewBtcWallet(PRIVATE_KEY, isMainnet)
+	client := indexer.NewBitcoinClient(isMainnet) // testnet
 
 	// Get client utxos
-	client.GetAddressUTXOs("tb1qa75lc8j9ku9jn0mmjd8quakqwycscsxjmlcw0a")
+	wifAddr, err := wallet.GetWifAddress()
+	if err != nil {
+		log.Fatal(err)
+	}
+	client.GetAddressUTXOs(wifAddr)
+
+	// get wallet
 }

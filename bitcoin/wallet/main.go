@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	rawTx, err := CreateTx("L5fgEFF8UbPZEyNwGrStEo3LcNPnxi1zMC1grKj4wd7RPa1dTsmb",
+	rawTx, err := CreateTx("..",
 		"mkYvnmm3KUBkvVqUAYsG6A6amt5Dva4jzX", 60000)
 
 	if err != nil {
