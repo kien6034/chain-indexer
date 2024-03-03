@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"sort"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/bech32"
@@ -135,17 +136,11 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 
 	fmt.Printf("Using UTXO %s\n: %d", utxos[0].TxID, utxos[0].Vout)
 
-	// build tx
-	tx := wire.NewMsgTx(wire.TxVersion)
-
-	prevOutHash, err := chainhash.NewHashFromStr(utxos[0].TxID)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// define tx input
-	txIn := wire.NewTxIn(wire.NewOutPoint(prevOutHash, uint32(utxos[0].Vout)), nil, nil)
-	tx.AddTxIn(txIn)
+	tx, err := w.GreedyCoinSelection(utxos, amount)
+	if err != nil {
+		return "", err
+	}
 
 	// get receiver pk script
 	receiverPkScript, err := getPkScript(receiverAddress, &w.chainCfg)
@@ -191,10 +186,13 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 
 	// define fetcher (required for witnessSignature)
 	fetcher := txscript.NewMultiPrevOutFetcher(nil)
-	fetcher.AddPrevOut(txIn.PreviousOutPoint, &wire.TxOut{
-		Value:    utxos[0].Value,
-		PkScript: script,
-	})
+
+	for _, txIn := range tx.TxIn {
+		fetcher.AddPrevOut(txIn.PreviousOutPoint, &wire.TxOut{
+			Value:    utxos[0].Value,
+			PkScript: script,
+		})
+	}
 
 	// sign tx
 	sigHashes := txscript.NewTxSigHashes(tx, fetcher)
@@ -217,6 +215,44 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	}
 
 	return res, nil
+}
+
+func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*wire.MsgTx, error) {
+	totalAmount := int64(0)
+	selectedUtxos := []indexer.UTXO{}
+
+	// Sort UTXOs by value in descending order
+	sort.Slice(utxos, func(i, j int) bool {
+		return utxos[i].Value > utxos[j].Value
+	})
+
+	for _, utxo := range utxos {
+		if totalAmount >= amount {
+			break
+		}
+		selectedUtxos = append(selectedUtxos, utxo)
+		totalAmount += utxo.Value
+	}
+
+	if totalAmount < amount {
+		return nil, fmt.Errorf("insufficient funds: have %d, need %d", totalAmount, amount)
+	}
+
+	// Create a new transaction
+	tx := wire.NewMsgTx(wire.TxVersion)
+
+	// Add inputs for each selected UTXO
+	for _, utxo := range selectedUtxos {
+		hash, err := chainhash.NewHashFromStr(utxo.TxID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid txid %s: %v", utxo.TxID, err)
+		}
+		outPoint := wire.NewOutPoint(hash, uint32(utxo.Vout))
+		txIn := wire.NewTxIn(outPoint, nil, nil)
+		tx.AddTxIn(txIn)
+	}
+
+	return tx, nil
 }
 
 func getPkScript(address string, chainCfg *chaincfg.Params) ([]byte, error) {

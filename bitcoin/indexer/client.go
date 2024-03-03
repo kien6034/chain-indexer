@@ -17,7 +17,6 @@ func NewBitcoinClient(isMainnet bool) *BitcoinClient {
 }
 
 func (c *BitcoinClient) GetAddressTransactions(address string) ([]Transaction, error) {
-
 	txItems, err := c.MempoolSpaceClient.GetAddressTransactions(address)
 	if err != nil {
 		return nil, err

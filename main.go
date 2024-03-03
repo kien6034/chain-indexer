@@ -27,20 +27,21 @@ func main() {
 	// create indexer
 	indexer := indexer.NewBitcoinClient(false)
 
-	// // Get address transactions
-	// txItems, err := indexer.GetAddressTransactions("tb1qjfaa5vvxt9m4sp9kqkcpzypkzydz2vcywqx9tm")
+	// Get address transactions
+	// utxos, err := indexer.GetAddressUTXOs("tb1qsehk8q2v6d833dnf8fgsr5p8klfhysvd7cega5")
 
 	// if err != nil {
 	// 	panic(err)
 	// }
 
-	// for _, tx := range txItems {
-	// 	tx.VerbalInfo()
-	// }
+	// log.Printf("response: %v", utxos)
 
 	w := wallet.NewBtcWallet(PRIVATE_KEY, false)
+	walletPubkey, _ := w.GetWifPubkeyAddress()
 
-	r, err := w.SendTxWithMemo(*indexer, "tb1qnnuc6efguvx097v74j7udxt05ra90g0txwaar6", 1000, "0x5b5fDd1510F817Ece8bBD911d7028144522c4429", "97")
+	log.Printf("wallet pubkey: %s", walletPubkey)
+
+	r, err := w.SendTxWithMemo(*indexer, "tb1qjfaa5vvxt9m4sp9kqkcpzypkzydz2vcywqx9tm", 1000, "0x5b5fDd1510F817Ece8bBD911d7028144522c4429", "97")
 	if err != nil {
 		panic(err)
 	}
