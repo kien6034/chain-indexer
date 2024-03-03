@@ -9,8 +9,10 @@ import (
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/bech32"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/kien6034/chain-indexer/bitcoin/indexer"
 )
 
 type BtcWallet struct {
@@ -110,4 +112,123 @@ func (w *BtcWallet) SignTx(pkScript string, redeemTx *wire.MsgTx) (string, error
 	hexSignedTx := hex.EncodeToString(signedTx.Bytes())
 
 	return hexSignedTx, nil
+}
+
+func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress string, amount int64, evmAddress string, chainId string) (string, error) {
+	memo := fmt.Sprintf("%s:%s", evmAddress, chainId)
+
+	// get wif pubkey address
+	p2wpkhAddress, err := w.GetWifPubkeyAddress()
+	if err != nil {
+		return "", err
+	}
+
+	// get utxos
+	utxos, err := c.GetAddressUTXOs(p2wpkhAddress)
+	if err != nil {
+		return "", err
+	}
+
+	for _, utxo := range utxos {
+		fmt.Printf("UTXO: %s, Vout: %d, Value: %d\n", utxo.TxID, utxo.Vout, utxo.Value)
+	}
+
+	fmt.Printf("Using UTXO %s\n: %d", utxos[0].TxID, utxos[0].Vout)
+
+	// build tx
+	tx := wire.NewMsgTx(wire.TxVersion)
+
+	prevOutHash, err := chainhash.NewHashFromStr(utxos[0].TxID)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// define tx input
+	txIn := wire.NewTxIn(wire.NewOutPoint(prevOutHash, uint32(utxos[0].Vout)), nil, nil)
+	tx.AddTxIn(txIn)
+
+	// get receiver pk script
+	receiverPkScript, err := getPkScript(receiverAddress, &w.chainCfg)
+	if err != nil {
+		return "", err
+	}
+
+	// get spender pk script
+	spenderPkScript, err := getPkScript(p2wpkhAddress, &w.chainCfg)
+	if err != nil {
+		return "", err
+	}
+
+	// add memo (OP_RETURN) to the tx
+	b := txscript.NewScriptBuilder()
+	b.AddOp(txscript.OP_RETURN)
+	b.AddData([]byte(memo))
+
+	memoScript, err := b.Script()
+	if err != nil {
+		return "", err
+	}
+
+	// add tx output with op_return
+	tx.AddTxOut(wire.NewTxOut(0, memoScript))
+	// add tx output to transfer sats to receiver address
+	tx.AddTxOut(wire.NewTxOut(amount, receiverPkScript))
+	// add tx output to transfer unspent sats to spender address
+	tx.AddTxOut(wire.NewTxOut(int64(utxos[0].Value)-amount-indexer.RelayFee, spenderPkScript))
+
+	// Fetch utxo[0] script
+	script, err := c.FetchTransactionScriptPubKey(utxos[0].TxID, utxos[0].Vout, &w.chainCfg)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("\nScript: %s\n", hex.EncodeToString(script))
+
+	wif, err := btcutil.DecodeWIF(w.pk)
+	if err != nil {
+		return "", err
+	}
+
+	// define fetcher (required for witnessSignature)
+	fetcher := txscript.NewMultiPrevOutFetcher(nil)
+	fetcher.AddPrevOut(txIn.PreviousOutPoint, &wire.TxOut{
+		Value:    utxos[0].Value,
+		PkScript: script,
+	})
+
+	// sign tx
+	sigHashes := txscript.NewTxSigHashes(tx, fetcher)
+	witnessSignature, err := txscript.WitnessSignature(tx, sigHashes, 0, int64(utxos[0].Value), script, txscript.SigHashAll, wif.PrivKey, true)
+	if err != nil {
+		return "", nil
+	}
+
+	// since there is only one input, and want to add
+	// signature to it use 0 as index
+	tx.TxIn[0].Witness = witnessSignature
+
+	var signedTx bytes.Buffer
+	tx.Serialize(&signedTx)
+
+	// broadcast tx
+	res, err := c.BroadcastTx(hex.EncodeToString(signedTx.Bytes()))
+	if err != nil {
+		return "", err
+	}
+
+	return res, nil
+}
+
+func getPkScript(address string, chainCfg *chaincfg.Params) ([]byte, error) {
+	addr, err := btcutil.DecodeAddress(address, chainCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	pkScript, err := txscript.PayToAddrScript(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return pkScript, nil
 }
