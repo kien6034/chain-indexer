@@ -167,10 +167,9 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	// add tx output to transfer sats to receiver address
 	txDetails.Msg.AddTxOut(wire.NewTxOut(amount, receiverPkScript))
 	// add tx output to transfer unspent sats to spender address
-	txDetails.Msg.AddTxOut(wire.NewTxOut(int64(utxos[0].Value)-amount-indexer.RelayFee, spenderPkScript))
+	txDetails.Msg.AddTxOut(wire.NewTxOut(txDetails.TotalAmount-amount-RelayerFee*int64(len(txDetails.Msg.TxIn)), spenderPkScript))
 
 	// Fetch utxo[0] script
-
 	wif, err := btcutil.DecodeWIF(w.pk)
 	if err != nil {
 		return "", err
@@ -179,9 +178,7 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	// define fetcher (required for witnessSignature)
 	fetcher := txscript.NewMultiPrevOutFetcher(nil)
 
-	// add prev out to fetcher
 	for i, txIn := range txDetails.Msg.TxIn {
-
 		selectedUtxo := txDetails.SelectedUTXOs[i]
 
 		script, err := c.FetchTransactionScriptPubKey(selectedUtxo.TxID, selectedUtxo.Vout, &w.chainCfg)
@@ -193,10 +190,20 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 			Value:    selectedUtxo.Value,
 			PkScript: script,
 		})
+	}
+
+	// add prev out to fetcher
+	for i, _ := range txDetails.Msg.TxIn {
+		selectedUtxo := txDetails.SelectedUTXOs[i]
+
+		script, err := c.FetchTransactionScriptPubKey(selectedUtxo.TxID, selectedUtxo.Vout, &w.chainCfg)
+		if err != nil {
+			return "", err
+		}
 
 		// Signe tx
 		sigHashes := txscript.NewTxSigHashes(txDetails.Msg, fetcher)
-		witnessSignature, err := txscript.WitnessSignature(txDetails.Msg, sigHashes, i, int64(selectedUtxo.Value), script, txscript.SigHashAll, wif.PrivKey, true)
+		witnessSignature, err := txscript.WitnessSignature(txDetails.Msg, sigHashes, i, selectedUtxo.Value, script, txscript.SigHashAll, wif.PrivKey, true)
 		if err != nil {
 			return "", err
 		}
@@ -204,6 +211,7 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 		txDetails.Msg.TxIn[i].Witness = witnessSignature
 	}
 
+	// sign tx
 	var signedTx bytes.Buffer
 	txDetails.Msg.Serialize(&signedTx)
 
@@ -219,6 +227,7 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 type TxDetails struct {
 	SelectedUTXOs []indexer.UTXO
 	Msg           *wire.MsgTx
+	TotalAmount   int64
 }
 
 func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*TxDetails, error) {
@@ -260,6 +269,7 @@ func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*Tx
 	return &TxDetails{
 		SelectedUTXOs: selectedUtxos,
 		Msg:           tx,
+		TotalAmount:   totalAmount,
 	}, nil
 }
 
