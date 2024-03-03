@@ -134,10 +134,8 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 		fmt.Printf("UTXO: %s, Vout: %d, Value: %d\n", utxo.TxID, utxo.Vout, utxo.Value)
 	}
 
-	fmt.Printf("Using UTXO %s\n: %d", utxos[0].TxID, utxos[0].Vout)
-
 	// define tx input
-	tx, err := w.GreedyCoinSelection(utxos, amount)
+	txDetails, err := w.GreedyCoinSelection(utxos, amount)
 	if err != nil {
 		return "", err
 	}
@@ -165,19 +163,13 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	}
 
 	// add tx output with op_return
-	tx.AddTxOut(wire.NewTxOut(0, memoScript))
+	txDetails.Msg.AddTxOut(wire.NewTxOut(0, memoScript))
 	// add tx output to transfer sats to receiver address
-	tx.AddTxOut(wire.NewTxOut(amount, receiverPkScript))
+	txDetails.Msg.AddTxOut(wire.NewTxOut(amount, receiverPkScript))
 	// add tx output to transfer unspent sats to spender address
-	tx.AddTxOut(wire.NewTxOut(int64(utxos[0].Value)-amount-indexer.RelayFee, spenderPkScript))
+	txDetails.Msg.AddTxOut(wire.NewTxOut(int64(utxos[0].Value)-amount-indexer.RelayFee, spenderPkScript))
 
 	// Fetch utxo[0] script
-	script, err := c.FetchTransactionScriptPubKey(utxos[0].TxID, utxos[0].Vout, &w.chainCfg)
-	if err != nil {
-		return "", err
-	}
-
-	log.Printf("\nScript: %s\n", hex.EncodeToString(script))
 
 	wif, err := btcutil.DecodeWIF(w.pk)
 	if err != nil {
@@ -187,26 +179,33 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	// define fetcher (required for witnessSignature)
 	fetcher := txscript.NewMultiPrevOutFetcher(nil)
 
-	for _, txIn := range tx.TxIn {
+	// add prev out to fetcher
+	for i, txIn := range txDetails.Msg.TxIn {
+
+		selectedUtxo := txDetails.SelectedUTXOs[i]
+
+		script, err := c.FetchTransactionScriptPubKey(selectedUtxo.TxID, selectedUtxo.Vout, &w.chainCfg)
+		if err != nil {
+			return "", err
+		}
+
 		fetcher.AddPrevOut(txIn.PreviousOutPoint, &wire.TxOut{
-			Value:    utxos[0].Value,
+			Value:    selectedUtxo.Value,
 			PkScript: script,
 		})
-	}
 
-	// sign tx
-	sigHashes := txscript.NewTxSigHashes(tx, fetcher)
-	witnessSignature, err := txscript.WitnessSignature(tx, sigHashes, 0, int64(utxos[0].Value), script, txscript.SigHashAll, wif.PrivKey, true)
-	if err != nil {
-		return "", nil
-	}
+		// Signe tx
+		sigHashes := txscript.NewTxSigHashes(txDetails.Msg, fetcher)
+		witnessSignature, err := txscript.WitnessSignature(txDetails.Msg, sigHashes, i, int64(selectedUtxo.Value), script, txscript.SigHashAll, wif.PrivKey, true)
+		if err != nil {
+			return "", err
+		}
 
-	// since there is only one input, and want to add
-	// signature to it use 0 as index
-	tx.TxIn[0].Witness = witnessSignature
+		txDetails.Msg.TxIn[i].Witness = witnessSignature
+	}
 
 	var signedTx bytes.Buffer
-	tx.Serialize(&signedTx)
+	txDetails.Msg.Serialize(&signedTx)
 
 	// broadcast tx
 	res, err := c.BroadcastTx(hex.EncodeToString(signedTx.Bytes()))
@@ -217,7 +216,12 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	return res, nil
 }
 
-func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*wire.MsgTx, error) {
+type TxDetails struct {
+	SelectedUTXOs []indexer.UTXO
+	Msg           *wire.MsgTx
+}
+
+func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*TxDetails, error) {
 	totalAmount := int64(0)
 	selectedUtxos := []indexer.UTXO{}
 
@@ -230,6 +234,7 @@ func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*wi
 		if totalAmount >= amount {
 			break
 		}
+		fmt.Printf("UTXO: %s, Vout: %d, Value: %d\n", utxo.TxID, utxo.Vout, utxo.Value)
 		selectedUtxos = append(selectedUtxos, utxo)
 		totalAmount += utxo.Value
 	}
@@ -252,7 +257,10 @@ func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*wi
 		tx.AddTxIn(txIn)
 	}
 
-	return tx, nil
+	return &TxDetails{
+		SelectedUTXOs: selectedUtxos,
+		Msg:           tx,
+	}, nil
 }
 
 func getPkScript(address string, chainCfg *chaincfg.Params) ([]byte, error) {
