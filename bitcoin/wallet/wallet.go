@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"sort"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/bech32"
@@ -133,19 +134,11 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 		fmt.Printf("UTXO: %s, Vout: %d, Value: %d\n", utxo.TxID, utxo.Vout, utxo.Value)
 	}
 
-	fmt.Printf("Using UTXO %s\n: %d", utxos[0].TxID, utxos[0].Vout)
-
-	// build tx
-	tx := wire.NewMsgTx(wire.TxVersion)
-
-	prevOutHash, err := chainhash.NewHashFromStr(utxos[0].TxID)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// define tx input
-	txIn := wire.NewTxIn(wire.NewOutPoint(prevOutHash, uint32(utxos[0].Vout)), nil, nil)
-	tx.AddTxIn(txIn)
+	txDetails, err := w.GreedyCoinSelection(utxos, amount)
+	if err != nil {
+		return "", err
+	}
 
 	// get receiver pk script
 	receiverPkScript, err := getPkScript(receiverAddress, &w.chainCfg)
@@ -170,20 +163,13 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	}
 
 	// add tx output with op_return
-	tx.AddTxOut(wire.NewTxOut(0, memoScript))
+	txDetails.Msg.AddTxOut(wire.NewTxOut(0, memoScript))
 	// add tx output to transfer sats to receiver address
-	tx.AddTxOut(wire.NewTxOut(amount, receiverPkScript))
+	txDetails.Msg.AddTxOut(wire.NewTxOut(amount, receiverPkScript))
 	// add tx output to transfer unspent sats to spender address
-	tx.AddTxOut(wire.NewTxOut(int64(utxos[0].Value)-amount-indexer.RelayFee, spenderPkScript))
+	txDetails.Msg.AddTxOut(wire.NewTxOut(txDetails.TotalAmount-amount-RelayerFee*int64(len(txDetails.Msg.TxIn)), spenderPkScript))
 
 	// Fetch utxo[0] script
-	script, err := c.FetchTransactionScriptPubKey(utxos[0].TxID, utxos[0].Vout, &w.chainCfg)
-	if err != nil {
-		return "", err
-	}
-
-	log.Printf("\nScript: %s\n", hex.EncodeToString(script))
-
 	wif, err := btcutil.DecodeWIF(w.pk)
 	if err != nil {
 		return "", err
@@ -191,24 +177,43 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 
 	// define fetcher (required for witnessSignature)
 	fetcher := txscript.NewMultiPrevOutFetcher(nil)
-	fetcher.AddPrevOut(txIn.PreviousOutPoint, &wire.TxOut{
-		Value:    utxos[0].Value,
-		PkScript: script,
-	})
 
-	// sign tx
-	sigHashes := txscript.NewTxSigHashes(tx, fetcher)
-	witnessSignature, err := txscript.WitnessSignature(tx, sigHashes, 0, int64(utxos[0].Value), script, txscript.SigHashAll, wif.PrivKey, true)
-	if err != nil {
-		return "", nil
+	for i, txIn := range txDetails.Msg.TxIn {
+		selectedUtxo := txDetails.SelectedUTXOs[i]
+
+		script, err := c.FetchTransactionScriptPubKey(selectedUtxo.TxID, selectedUtxo.Vout, &w.chainCfg)
+		if err != nil {
+			return "", err
+		}
+
+		fetcher.AddPrevOut(txIn.PreviousOutPoint, &wire.TxOut{
+			Value:    selectedUtxo.Value,
+			PkScript: script,
+		})
 	}
 
-	// since there is only one input, and want to add
-	// signature to it use 0 as index
-	tx.TxIn[0].Witness = witnessSignature
+	// add prev out to fetcher
+	for i, _ := range txDetails.Msg.TxIn {
+		selectedUtxo := txDetails.SelectedUTXOs[i]
 
+		script, err := c.FetchTransactionScriptPubKey(selectedUtxo.TxID, selectedUtxo.Vout, &w.chainCfg)
+		if err != nil {
+			return "", err
+		}
+
+		// Signe tx
+		sigHashes := txscript.NewTxSigHashes(txDetails.Msg, fetcher)
+		witnessSignature, err := txscript.WitnessSignature(txDetails.Msg, sigHashes, i, selectedUtxo.Value, script, txscript.SigHashAll, wif.PrivKey, true)
+		if err != nil {
+			return "", err
+		}
+
+		txDetails.Msg.TxIn[i].Witness = witnessSignature
+	}
+
+	// sign tx
 	var signedTx bytes.Buffer
-	tx.Serialize(&signedTx)
+	txDetails.Msg.Serialize(&signedTx)
 
 	// broadcast tx
 	res, err := c.BroadcastTx(hex.EncodeToString(signedTx.Bytes()))
@@ -217,6 +222,55 @@ func (w *BtcWallet) SendTxWithMemo(c indexer.BitcoinClient, receiverAddress stri
 	}
 
 	return res, nil
+}
+
+type TxDetails struct {
+	SelectedUTXOs []indexer.UTXO
+	Msg           *wire.MsgTx
+	TotalAmount   int64
+}
+
+func (w *BtcWallet) GreedyCoinSelection(utxos []indexer.UTXO, amount int64) (*TxDetails, error) {
+	totalAmount := int64(0)
+	selectedUtxos := []indexer.UTXO{}
+
+	// Sort UTXOs by value in descending order
+	sort.Slice(utxos, func(i, j int) bool {
+		return utxos[i].Value > utxos[j].Value
+	})
+
+	for _, utxo := range utxos {
+		if totalAmount >= amount {
+			break
+		}
+		fmt.Printf("UTXO: %s, Vout: %d, Value: %d\n", utxo.TxID, utxo.Vout, utxo.Value)
+		selectedUtxos = append(selectedUtxos, utxo)
+		totalAmount += utxo.Value
+	}
+
+	if totalAmount < amount {
+		return nil, fmt.Errorf("insufficient funds: have %d, need %d", totalAmount, amount)
+	}
+
+	// Create a new transaction
+	tx := wire.NewMsgTx(wire.TxVersion)
+
+	// Add inputs for each selected UTXO
+	for _, utxo := range selectedUtxos {
+		hash, err := chainhash.NewHashFromStr(utxo.TxID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid txid %s: %v", utxo.TxID, err)
+		}
+		outPoint := wire.NewOutPoint(hash, uint32(utxo.Vout))
+		txIn := wire.NewTxIn(outPoint, nil, nil)
+		tx.AddTxIn(txIn)
+	}
+
+	return &TxDetails{
+		SelectedUTXOs: selectedUtxos,
+		Msg:           tx,
+		TotalAmount:   totalAmount,
+	}, nil
 }
 
 func getPkScript(address string, chainCfg *chaincfg.Params) ([]byte, error) {
